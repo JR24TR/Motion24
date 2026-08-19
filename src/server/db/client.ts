@@ -25,8 +25,6 @@ export function getDb(): DatabaseSync {
   db.exec("PRAGMA journal_mode = WAL;");
   db.exec("PRAGMA foreign_keys = ON;");
   db.exec("PRAGMA busy_timeout = 5000;");
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { bootstrap } = require("./bootstrap") as typeof import("./bootstrap");
   bootstrap(db);
   return db;
 }

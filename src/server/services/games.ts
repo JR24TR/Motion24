@@ -120,15 +120,10 @@ export function startGameSession(userId: string, slug: string): StartedSession {
     if (bal < game.entryCost) throw ERRORS.INSUFFICIENT_FUNDS(game.entryCost, bal);
 
     const sessionId = uuid();
-    if (game.entryCost > 0) {
-      applyCoinChange({
-        userId,
-        amount: -game.entryCost,
-        type: "GAME_ENTRY",
-        description: `Game Entry — ${game.name}`,
-        gameSessionId: sessionId,
-      });
-    }
+    // Order matters: the ledger row for the entry fee references the game
+    // session (FK), so the session row must exist first. Both writes happen
+    // in this same transaction — if the deduction fails, the session rolls
+    // back too, so coins are never lost without a valid session.
     run(
       `INSERT INTO game_sessions (id, user_id, game_id, status, entry_cost, started_at)
        VALUES (?, ?, ?, 'ACTIVE', ?, ?)`,
@@ -138,6 +133,15 @@ export function startGameSession(userId: string, slug: string): StartedSession {
       game.entryCost,
       nowIso()
     );
+    if (game.entryCost > 0) {
+      applyCoinChange({
+        userId,
+        amount: -game.entryCost,
+        type: "GAME_ENTRY",
+        description: `Game Entry — ${game.name}`,
+        gameSessionId: sessionId,
+      });
+    }
     run(`UPDATE games SET play_count = play_count + 1, updated_at = ? WHERE id = ?`, nowIso(), game.id);
 
     const config = parseEngineConfig(game.engine, game.config);

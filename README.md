@@ -54,8 +54,8 @@ The database lives at `data/app.db` (gitignored). Delete it to re-seed from scra
 
 | Account | Username | Password | Notes |
 |---|---|---|---|
-| Admin | `admin` | `ArenaAdmin!2026` (override with `ADMIN_PASSWORD` env) | full admin panel access |
-| Demo players | `nova`, `pixel`, `raven`, `mite`, `zephyr` | `demo-player` | seeded leaderboard/test data — delete freely |
+| Admin | `admin` (override with `ADMIN_USERNAME`) | **Set `ADMIN_PASSWORD` before first boot** — if unset, a random temporary password is generated and printed **once** to the server console (dev only). It is never stored in source or returned by any API. | full admin panel access |
+| Demo players | `nova`, `pixel`, `raven`, `mite`, `zephyr` | `demo-player` | **dev/test data only** — regular PLAYER accounts with fake `@demo.arena.local` emails, seeded so the leaderboard looks alive. Delete freely. |
 
 ## Architecture
 
@@ -86,5 +86,7 @@ src/
   engine's theoretical maximum and validates elapsed time, but a determined client could
   still report a max score — acceptable for a friends-only platform; server-simulated games
   would be needed for stronger guarantees.
-- No email provider is configured, so password-reset links are returned in the API response
-  instead of being emailed. Swap for a real mailer before wider use.
+- Password reset never returns a usable link in API responses. Reset URLs are logged
+  server-side in development; an explicit `ARENA_DEV_RESET_LINKS=true` flag (default off,
+  forced off in production) can return them for local testing until a mail provider is
+  configured.

@@ -160,23 +160,30 @@ export function updateProfile(
   userId: string,
   patch: { displayName?: string; avatar?: string; bio?: string }
 ) {
-  const sets: string[] = [];
-  const params: (string | number | null)[] = [];
+  // display_name lives on `users`; avatar/bio live on `profiles`.
+  // Only these whitelisted fields are ever written — callers cannot touch
+  // balance, XP, role or any other column through this function.
   if (patch.displayName !== undefined) {
-    sets.push("display_name = ?");
-    params.push(patch.displayName);
+    run(`UPDATE users SET display_name = ?, updated_at = ? WHERE id = ?`, patch.displayName, nowIso(), userId);
   }
+  const profileSets: string[] = [];
+  const params: (string | number | null)[] = [];
   if (patch.avatar !== undefined) {
-    sets.push("avatar = ?");
+    profileSets.push("avatar = ?");
     params.push(patch.avatar);
   }
   if (patch.bio !== undefined) {
-    sets.push("bio = ?");
+    profileSets.push("bio = ?");
     params.push(patch.bio);
   }
-  if (sets.length === 0) return;
-  run(`UPDATE users SET updated_at = ? WHERE id = ?`, nowIso(), userId);
-  run(`UPDATE profiles SET ${sets.join(", ")}, updated_at = ? WHERE user_id = ?`, ...params, nowIso(), userId);
+  if (profileSets.length > 0) {
+    run(
+      `UPDATE profiles SET ${profileSets.join(", ")}, updated_at = ? WHERE user_id = ?`,
+      ...params,
+      nowIso(),
+      userId
+    );
+  }
 }
 
 export function findByLogin(login: string) {

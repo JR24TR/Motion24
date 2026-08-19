@@ -5,9 +5,11 @@ import { registerUser } from "@/server/services/players";
 import { createSession } from "@/server/auth/session";
 import { get } from "@/server/db/client";
 import { ApiError } from "@/server/lib/errors";
+import { enforceRateLimit, clientIp } from "@/server/lib/rate-limit";
 
 export async function POST(req: NextRequest) {
   return handle(async () => {
+    enforceRateLimit(`register:ip:${clientIp(req)}`);
     const input = await body(req, registerSchema);
     const dupeU = get<{ id: string }>(`SELECT id FROM users WHERE username = ? COLLATE NOCASE`, input.username);
     if (dupeU) throw new ApiError(409, "USERNAME_TAKEN", "That username is already taken.");

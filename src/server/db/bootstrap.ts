@@ -93,11 +93,20 @@ export function bootstrap(db: DatabaseSync) {
   );
 
   // ---- admin account ------------------------------------------------------
-  const adminPassword = process.env.ADMIN_PASSWORD ?? "ArenaAdmin!2026";
+  // Security: no hardcoded default. If ADMIN_PASSWORD is provided via the
+  // environment it is used; otherwise a cryptographically random temporary
+  // password is generated and printed ONCE to the server console (dev only).
+  // It is never written to source, the DB in plaintext, README or any API.
+  const envPassword = (process.env.ADMIN_PASSWORD ?? "").trim();
+  const generated = envPassword === "";
+  const adminPassword = generated
+    ? crypto.randomBytes(12).toString("base64url") // 16-char random credential
+    : envPassword;
+  const adminUsername = process.env.ADMIN_USERNAME ?? "admin";
   const adminId = uuid();
   insUser.run({
     id: adminId,
-    username: process.env.ADMIN_USERNAME ?? "admin",
+    username: adminUsername,
     email: "admin@arena.local",
     display_name: "Arena Admin",
     password_hash: bcrypt.hashSync(adminPassword, 10),
@@ -108,6 +117,16 @@ export function bootstrap(db: DatabaseSync) {
     updated_at: now,
   });
   insProfile.run(adminId, "🛡️", "Platform administrator.", 0, 0, 0, 0, 0, 0, now, now);
+  if (generated) {
+    console.log(`
+================================================================
+ ARENA admin account created with a TEMPORARY DEV CREDENTIAL
+   username : ${adminUsername}
+   password : ${adminPassword}
+ Shown once here only (server console). Set ADMIN_PASSWORD in
+ the environment to choose your own. Never commit this value.
+================================================================`);
+  }
 
   // ---- demo players (seeded so leaderboard/landing preview look alive) ---
   const demoPassword = bcrypt.hashSync("demo-player", 10);

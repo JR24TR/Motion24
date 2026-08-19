@@ -1,0 +1,133 @@
+@import "tailwindcss";
+
+@theme {
+  /* Arena design system — dark gaming aesthetic */
+  --color-bg: #07080d;
+  --color-bg-2: #0b0d15;
+  --color-surface: #10121c;
+  --color-surface-2: #171a28;
+  --color-line: #232839;
+  --color-line-2: #2e3448;
+  --color-ink: #eef0fa;
+  --color-mute: #9aa1b8;
+  --color-dim: #6b7290;
+  --color-arc: #f5b544;
+  --color-arc-deep: #c98a1b;
+  --color-brand: #7c5cff;
+  --color-brand-2: #38e1ff;
+  --color-win: #3ddc97;
+  --color-lose: #ff6b81;
+  --color-xp: #38e1ff;
+
+  --font-sans: "Inter", "SF Pro Text", "Segoe UI", system-ui, -apple-system,
+    sans-serif;
+  --font-display: "Space Grotesk", "Avenir Next", "SF Pro Display", "Segoe UI",
+    system-ui, sans-serif;
+
+  --animate-pop: pop 0.25s ease-out;
+  --animate-float: float 7s ease-in-out infinite;
+  --animate-rise: rise 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  --animate-shimmer: shimmer 2.4s linear infinite;
+  --animate-glow: glow 2.6s ease-in-out infinite;
+}
+
+@keyframes pop {
+  0% { transform: scale(0.6); opacity: 0; }
+  70% { transform: scale(1.08); }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+@keyframes rise {
+  from { transform: translateY(14px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 18px -6px rgba(124, 92, 255, 0.55); }
+  50% { box-shadow: 0 0 30px -4px rgba(56, 225, 255, 0.5); }
+}
+@keyframes coin-in {
+  0% { transform: scale(0.3) rotate(-12deg); opacity: 0; }
+  25% { transform: scale(1.05) rotate(2deg); opacity: 1; }
+  80% { transform: scale(1) rotate(0deg); opacity: 1; }
+  100% { transform: scale(0.85); opacity: 0; }
+}
+@keyframes tap-burst {
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1.9); opacity: 0; }
+}
+@keyframes count-flash {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.22); color: #f5b544; }
+  100% { transform: scale(1); }
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background:
+    radial-gradient(1100px 500px at 85% -10%, rgba(124, 92, 255, 0.14), transparent 60%),
+    radial-gradient(900px 420px at -10% 0%, rgba(56, 225, 255, 0.09), transparent 55%),
+    var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  min-height: 100dvh;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.font-display { font-family: var(--font-display); }
+.tnum { font-variant-numeric: tabular-nums; }
+
+.gradient-text {
+  background: linear-gradient(92deg, #fff 10%, #b9a7ff 55%, #38e1ff 95%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.arc-text {
+  background: linear-gradient(92deg, #ffd98a, #f5b544 60%, #e09a2d);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* subtle grid backdrop for hero sections */
+.grid-backdrop {
+  background-image:
+    linear-gradient(rgba(124, 92, 255, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(124, 92, 255, 0.07) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse 90% 70% at 50% 0%, black 30%, transparent 75%);
+}
+
+.card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent 40%), var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 1.25rem;
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #161927 25%, #1f2335 50%, #161927 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+
+/* scrollbars */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #262b3d; border-radius: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* safe-area padding for mobile bottom nav */
+.pb-safe { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem); }
+.pt-safe { padding-top: calc(env(safe-area-inset-top, 0px)); }
+
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; }

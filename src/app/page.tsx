@@ -1,11 +1,17 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getSessionUser } from "@/server/auth/session";
 import { publicPlatformStats } from "@/server/services/stats";
 import { listGames } from "@/server/services/games";
 import { getLeaderboard } from "@/server/services/leaderboard";
 
 export const dynamic = "force-dynamic";
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  // Authenticated players land on their dashboard, not the marketing page.
+  const user = await getSessionUser();
+  if (user) redirect("/dashboard");
+
   const stats = publicPlatformStats();
   const games = listGames({ activeOnly: true });
   const top = getLeaderboard("ALL", 5);

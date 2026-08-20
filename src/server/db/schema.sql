@@ -90,6 +90,35 @@ CREATE INDEX IF NOT EXISTS idx_gs_user ON game_sessions(user_id, started_at DESC
 CREATE INDEX IF NOT EXISTS idx_gs_status ON game_sessions(status);
 CREATE INDEX IF NOT EXISTS idx_gs_game ON game_sessions(game_id);
 
+-- Purchase orders. Prices and ARC amounts are ALWAYS server-resolved.
+-- Integer money only: NGN in kobo (`amount_minor`), ARC as integer.
+-- `ledger_tx_id` is set only after a successful, atomic finalization.
+CREATE TABLE IF NOT EXISTS orders (
+  id                  TEXT PRIMARY KEY,
+  user_id             TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  package_id          TEXT NOT NULL,
+  status              TEXT NOT NULL CHECK (status IN (
+                        'PENDING','PROCESSING','SUCCESS','FAILED','EXPIRED','CANCELLED')),
+  payment_method      TEXT NOT NULL CHECK (payment_method IN ('CARD','BANK_TRANSFER','CRYPTO')),
+  provider            TEXT,
+  currency            TEXT NOT NULL DEFAULT 'NGN',
+  amount_minor        INTEGER NOT NULL CHECK (amount_minor > 0),
+  arc_amount          INTEGER NOT NULL CHECK (arc_amount > 0),
+  provider_reference  TEXT,
+  client_reference    TEXT NOT NULL UNIQUE,
+  provider_meta       TEXT,
+  ledger_tx_id        TEXT,
+  verified_at         TEXT,
+  expires_at          TEXT NOT NULL,
+  created_at          TEXT NOT NULL,
+  updated_at          TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_orders_user_created ON orders(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+CREATE INDEX IF NOT EXISTS idx_orders_expires ON orders(expires_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_provider_ref
+  ON orders(provider_reference) WHERE provider_reference IS NOT NULL;
+
 -- Append-only coin ledger. `amount` is signed; `balance_after` snapshots state.
 CREATE TABLE IF NOT EXISTS transactions (
   id              TEXT PRIMARY KEY,
@@ -98,10 +127,11 @@ CREATE TABLE IF NOT EXISTS transactions (
   type            TEXT NOT NULL CHECK (type IN (
                     'EARN','SPEND','GAME_ENTRY','GAME_REWARD','DAILY_BONUS',
                     'ACHIEVEMENT','REFERRAL','ADMIN_ADJUSTMENT','CHALLENGE',
-                    'REFUND','WELCOME','EVENT')),
+                    'REFUND','WELCOME','EVENT','PURCHASE')),
   description     TEXT NOT NULL,
   balance_after   INTEGER NOT NULL,
   game_session_id TEXT REFERENCES game_sessions(id),
+  order_id        TEXT REFERENCES orders(id),
   day_key         TEXT,
   meta            TEXT,
   created_at      TEXT NOT NULL
@@ -115,6 +145,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_tx_daily_dedupe
 -- one reward transaction per game session
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tx_session_reward
   ON transactions(game_session_id) WHERE game_session_id IS NOT NULL AND type IN ('GAME_REWARD','REFUND');
+-- at most one PURCHASE ledger row per order (idempotency / no double credit)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tx_purchase_order
+  ON transactions(order_id) WHERE order_id IS NOT NULL AND type = 'PURCHASE';
 
 CREATE TABLE IF NOT EXISTS achievements (
   id          TEXT PRIMARY KEY,

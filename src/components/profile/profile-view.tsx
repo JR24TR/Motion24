@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { api, ApiClientError } from "@/lib/api";
+import { api, ApiClientError, isUnauthorized, redirectToLogin } from "@/lib/api";
 import type { DashboardResponse } from "@/lib/account-types";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,8 +31,8 @@ export function ProfileView() {
         if (!cancelled) setData(res);
       } catch (err) {
         if (!cancelled) {
-          if (err instanceof ApiClientError && err.status === 401) {
-            window.location.href = "/login";
+          if (isUnauthorized(err)) {
+            redirectToLogin();
             return;
           }
           setError(err instanceof ApiClientError ? err.message : "Could not load your profile.");

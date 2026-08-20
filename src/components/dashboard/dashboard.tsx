@@ -2,54 +2,15 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { api, ApiClientError } from "@/lib/api";
+import { api, ApiClientError, isUnauthorized, redirectToLogin } from "@/lib/api";
+import type { DashboardResponse } from "@/lib/account-types";
 import { ArcCoin } from "@/components/ui/arc";
 import { Card } from "@/components/ui/card";
 import { LevelBadge } from "@/components/ui/level-badge";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { useToast } from "@/components/ui/toast";
 
-interface DashboardData {
-  balance: number;
-  gamesPlayed: number;
-  gamesWon: number;
-  winRate: number;
-  coinsEarned: number;
-  coinsSpent: number;
-  rank: number;
-  level: {
-    level: number;
-    xp: number;
-    xpIntoLevel: number;
-    xpForNextLevel: number;
-    progress: number;
-  };
-  recentTransactions: {
-    id: string;
-    amount: number;
-    type: string;
-    description: string;
-    balanceAfter: number;
-    createdAt: string;
-  }[];
-  recentAchievements: {
-    code: string;
-    name: string;
-    icon: string;
-    unlockedAt: string;
-  }[];
-  recentGames: {
-    id: string;
-    status: string;
-    score: number | null;
-    isWin: boolean;
-    reward: number;
-    xpEarned: number;
-    startedAt: string;
-    game: { slug: string; name: string; icon: string; difficulty: string };
-  }[];
-}
+type DashboardData = DashboardResponse;
 
 const QUICK_ACTIONS = [
   { href: "/games", label: "Play", icon: "🎮", desc: "Enter a game" },
@@ -87,7 +48,6 @@ function TxRow({ tx }: { tx: DashboardData["recentTransactions"][number] }) {
 }
 
 export function Dashboard() {
-  const toast = useToast();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -100,6 +60,10 @@ export function Dashboard() {
         if (!cancelled) setData(res);
       } catch (err) {
         if (!cancelled) {
+          if (isUnauthorized(err)) {
+            redirectToLogin();
+            return;
+          }
           setError(
             err instanceof ApiClientError ? err.message : "Could not load your dashboard."
           );

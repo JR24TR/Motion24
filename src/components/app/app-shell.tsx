@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { post } from "@/lib/api";
-import type { Me } from "@/lib/types";
+import { useAccount } from "@/components/app/account-provider";
 import { Avatar } from "@/components/ui/avatar";
 import { LevelBadge } from "@/components/ui/level-badge";
 import { ArcCoin } from "@/components/ui/arc";
@@ -28,17 +28,49 @@ const NAV: NavItem[] = [
 ];
 
 /** Primary items shown in the mobile bottom bar. */
-const BOTTOM_NAV = NAV.slice(0, 5);
+const PRIMARY_NAV = [
+  { href: "/dashboard", label: "Dashboard", icon: "🏠" },
+  { href: "/games", label: "Games", icon: "🎮" },
+  { href: "/earn", label: "Earn", icon: "🪙" },
+  { href: "/leaderboard", label: "Leaderboard", icon: "🏆" },
+  { href: "/transactions", label: "Transactions", icon: "💸" },
+];
+
+/**
+ * Items surfaced in the mobile "More" sheet. `available` is true only for
+ * routes that currently exist — planned Checkpoint 5 pages (achievements,
+ * notifications, rules) stay gated off until they are built so the nav never
+ * points at a nonexistent route.
+ */
+const MORE_NAV: (NavItem & { available: boolean })[] = [
+  { href: "/profile", label: "Profile", icon: "👤", available: true },
+  { href: "/achievements", label: "Achievements", icon: "🎯", available: false },
+  { href: "/notifications", label: "Notifications", icon: "🔔", available: false },
+  { href: "/rules", label: "Rules", icon: "📜", available: false },
+];
 
 function isActive(pathname: string, href: string): boolean {
   if (href === "/dashboard") return pathname === "/dashboard";
   return pathname.startsWith(href);
 }
 
-export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
+function NotifBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span className="grid h-5 min-w-5 place-items-center rounded-full bg-lose px-1 text-[11px] font-bold text-white">
+      {count > 99 ? "99+" : count}
+    </span>
+  );
+}
+
+export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { me } = useAccount();
   const [loggingOut, setLoggingOut] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+
+  const availableMore = MORE_NAV.filter((m) => m.available);
 
   async function logout() {
     setLoggingOut(true);
@@ -103,18 +135,16 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
                 href={item.href}
                 aria-current={active ? "page" : undefined}
                 className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
-                  active
-                    ? "bg-brand/15 text-ink"
-                    : "text-mute hover:bg-surface-2 hover:text-ink"
+                  active ? "bg-brand/15 text-ink" : "text-mute hover:bg-surface-2 hover:text-ink"
                 }`}
               >
                 <span aria-hidden className="text-base">
                   {item.icon}
                 </span>
                 {item.label}
-                {item.href === "/notifications" && me.unreadNotifications > 0 ? (
-                  <span className="ml-auto grid h-5 min-w-5 place-items-center rounded-full bg-lose px-1 text-[11px] font-bold text-white">
-                    {me.unreadNotifications > 99 ? "99+" : me.unreadNotifications}
+                {item.href === "/notifications" ? (
+                  <span className="ml-auto">
+                    <NotifBadge count={me.unreadNotifications} />
                   </span>
                 ) : null}
               </Link>
@@ -168,7 +198,7 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
 
       {/* Main content */}
       <div className="lg:pl-64">
-        <main id="main" className="mx-auto w-full max-w-6xl px-4 py-6 pb-28 sm:px-6 lg:pb-10">
+        <main id="main" className="mx-auto w-full max-w-6xl px-4 py-6 pb-32 sm:px-6 lg:pb-10">
           {children}
         </main>
       </div>
@@ -179,7 +209,7 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
         className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-bg-2/95 pb-safe backdrop-blur-md lg:hidden"
       >
         <div className="mx-auto flex max-w-lg items-stretch justify-around">
-          {BOTTOM_NAV.map((item) => {
+          {PRIMARY_NAV.map((item) => {
             const active = isActive(pathname, item.href);
             return (
               <Link
@@ -198,8 +228,87 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
               </Link>
             );
           })}
+          <button
+            type="button"
+            onClick={() => setMoreOpen((v) => !v)}
+            aria-expanded={moreOpen}
+            aria-haspopup="menu"
+            aria-label="More"
+            className={`flex min-h-14 flex-1 flex-col items-center justify-center gap-0.5 text-[10px] font-semibold transition ${
+              moreOpen ? "text-brand-2" : "text-mute"
+            }`}
+          >
+            <span aria-hidden className="text-lg leading-none">
+              ☰
+            </span>
+            More
+          </button>
         </div>
       </nav>
+
+      {/* Mobile "More" sheet */}
+      {moreOpen ? (
+        <div
+          role="dialog"
+          aria-label="More navigation"
+          className="fixed inset-0 z-50 lg:hidden"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setMoreOpen(false);
+          }}
+        >
+          <button
+            type="button"
+            aria-label="Close menu"
+            onClick={() => setMoreOpen(false)}
+            className="absolute inset-0 bg-black/60"
+          />
+          <div className="absolute inset-x-0 bottom-0 rounded-t-3xl border-t border-line bg-bg-2 pb-safe shadow-2xl shadow-black/50">
+            <div className="mx-auto flex max-w-lg flex-col p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <span className="font-display text-base font-bold text-ink">More</span>
+                <button
+                  type="button"
+                  onClick={() => setMoreOpen(false)}
+                  aria-label="Close"
+                  className="grid h-8 w-8 place-items-center rounded-lg text-mute transition hover:bg-surface-2 hover:text-ink"
+                >
+                  ×
+                </button>
+              </div>
+              {availableMore.length === 0 ? (
+                <p className="py-4 text-center text-sm text-dim">More options coming soon.</p>
+              ) : (
+                <div className="flex flex-col">
+                  {availableMore.map((item) => {
+                    const active = isActive(pathname, item.href);
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={() => setMoreOpen(false)}
+                        aria-current={active ? "page" : undefined}
+                        className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold transition ${
+                          active ? "bg-brand/15 text-ink" : "text-mute hover:bg-surface-2 hover:text-ink"
+                        }`}
+                      >
+                        <span aria-hidden className="text-base">
+                          {item.icon}
+                        </span>
+                        {item.label}
+                        {item.href === "/notifications" ? (
+                          <span className="ml-auto">
+                            <NotifBadge count={me.unreadNotifications} />
+                          </span>
+                        ) : null}
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

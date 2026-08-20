@@ -64,3 +64,18 @@ export function post<T>(path: string, body?: unknown): Promise<T> {
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 }
+
+/**
+ * True when a call failed because the session is invalid/expired. Callers
+ * should redirect to /login rather than showing a generic error.
+ */
+export function isUnauthorized(err: unknown): boolean {
+  return err instanceof ApiClientError && err.status === 401;
+}
+
+/** Hard redirect to the login page (safe to call from client effects). */
+export function redirectToLogin(): void {
+  if (typeof window !== "undefined") {
+    window.location.assign("/login");
+  }
+}

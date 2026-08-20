@@ -1,12 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { api, ApiClientError } from "@/lib/api";
+import { api, ApiClientError, isUnauthorized, redirectToLogin } from "@/lib/api";
 import type { TransactionsResponse, Transaction } from "@/lib/account-types";
 import { ArcCoin } from "@/components/ui/arc";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { useToast } from "@/components/ui/toast";
 
 type Filter = "ALL" | "EARNED" | "SPENT";
 
@@ -77,7 +76,6 @@ function TxRow({ tx }: { tx: Transaction }) {
 }
 
 export function Transactions() {
-  const toast = useToast();
   const [filter, setFilter] = useState<Filter>("ALL");
   const [page, setPage] = useState(1);
   const [data, setData] = useState<TransactionsResponse | null>(null);
@@ -93,8 +91,8 @@ export function Transactions() {
       );
       setData(res);
     } catch (err) {
-      if (err instanceof ApiClientError && err.status === 401) {
-        window.location.href = "/login";
+      if (isUnauthorized(err)) {
+        redirectToLogin();
         return;
       }
       setError(err instanceof ApiClientError ? err.message : "Could not load transactions.");

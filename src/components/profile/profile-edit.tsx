@@ -3,7 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { api, ApiClientError } from "@/lib/api";
+import { api, ApiClientError, isUnauthorized, redirectToLogin } from "@/lib/api";
 import type { MeResponse, DashboardResponse } from "@/lib/account-types";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -39,8 +39,8 @@ export function ProfileEdit() {
         setBio(dash.profile.bio ?? "");
       } catch (err) {
         if (!cancelled) {
-          if (err instanceof ApiClientError && err.status === 401) {
-            window.location.href = "/login";
+          if (isUnauthorized(err)) {
+            redirectToLogin();
             return;
           }
           setLoadError(err instanceof ApiClientError ? err.message : "Could not load your profile.");
@@ -69,27 +69,16 @@ export function ProfileEdit() {
 
     setSaving(true);
     try {
-      const res = await fetch("/api/profile", {
+      await api<{ ok: boolean }>("/api/profile", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ displayName: displayName.trim(), avatar, bio: bio.trim() }),
       });
-      if (!res.ok) {
-        let msg = "Could not save changes.";
-        try {
-          const env = await res.json();
-          if (env?.error?.message) msg = env.error.message;
-        } catch {
-          /* ignore */
-        }
-        throw new ApiClientError(res.status, "ERROR", msg);
-      }
       toast.success("Profile updated");
       router.push("/profile");
       router.refresh();
     } catch (err) {
-      if (err instanceof ApiClientError && err.status === 401) {
-        router.push("/login");
+      if (isUnauthorized(err)) {
+        redirectToLogin();
         return;
       }
       toast.error(err instanceof Error ? err.message : "Could not save your changes.");

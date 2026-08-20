@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { post, ApiClientError } from "@/lib/api";
+import { post, ApiClientError, isUnauthorized, redirectToLogin } from "@/lib/api";
+import { useAccount } from "@/components/app/account-provider";
 import type {
   GameCard,
   StartedSession,
@@ -61,6 +62,7 @@ export function CoinRushGame({
   onExit: () => void;
 }) {
   const router = useRouter();
+  const { refresh } = useAccount();
   const [phase, setPhase] = useState<Phase>("idle");
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
@@ -89,10 +91,12 @@ export function CoinRushGame({
       });
       setResult(res);
       setBalance(res.balance);
+      // Balance/unread changed server-side — mirror it in the shared shell state.
+      void refresh();
       setPhase("result");
     } catch (err) {
-      if (err instanceof ApiClientError && err.status === 401) {
-        router.push("/login");
+      if (isUnauthorized(err)) {
+        redirectToLogin();
         return;
       }
       setFinishError(
@@ -100,19 +104,7 @@ export function CoinRushGame({
       );
       setPhase("result");
     }
-  }, [sessionId, game.slug, router]);
-
-  const spawnItem = useCallback(() => {
-    setCfg((c) => {
-      if (!c) return c;
-      const roll = Math.random();
-      let type: ItemType = "coin";
-      if (roll < c.bombChance) type = "bomb";
-      else if (roll < c.bombChance + c.goldChance) type = "gold";
-      setItems((prev) => [...prev.slice(-26), { id: idRef.current++, type, x: rand(3, 92) }]);
-      return c;
-    });
-  }, []);
+  }, [sessionId, game.slug, router, refresh]);
 
   const removeItem = useCallback((id: number) => {
     setItems((prev) => prev.filter((i) => i.id !== id));
@@ -164,11 +156,13 @@ export function CoinRushGame({
       setSessionId(res.sessionId);
       setCfg(res.config as unknown as CoinRushConfig);
       setBalance(res.balance);
+      // Entry fee was deducted server-side — mirror it in the shared shell state.
+      void refresh();
       setCount(3);
       setPhase("countdown");
     } catch (err) {
-      if (err instanceof ApiClientError && err.status === 401) {
-        router.push("/login");
+      if (isUnauthorized(err)) {
+        redirectToLogin();
         return;
       }
       let msg =
@@ -208,11 +202,23 @@ export function CoinRushGame({
     return () => clearTimeout(t);
   }, [phase, count, cfg]);
 
-  // gameplay loop
+  // gameplay loop — item lifetime/despawn is driven by a JS timer, NOT CSS
+  // animation completion, so the game stays playable under
+  // prefers-reduced-motion (which fast-forwards CSS animations).
   useEffect(() => {
     if (phase !== "playing" || !cfg) return;
     const endAt = Date.now() + cfg.durationSec * 1000;
-    const spawnTimer = window.setInterval(spawnItem, cfg.spawnIntervalMs);
+    const spawnTimer = window.setInterval(() => {
+      const roll = Math.random();
+      let type: ItemType = "coin";
+      if (roll < cfg.bombChance) type = "bomb";
+      else if (roll < cfg.bombChance + cfg.goldChance) type = "gold";
+      const id = idRef.current++;
+      const x = rand(3, 92);
+      setItems((prev) => [...prev.slice(-26), { id, type, x }]);
+      // Despawn after the item's lifetime regardless of CSS animation state.
+      window.setTimeout(() => removeItem(id), cfg.coinLifetimeMs);
+    }, cfg.spawnIntervalMs);
     const tickTimer = window.setInterval(() => {
       const left = Math.max(0, Math.round((endAt - Date.now()) / 1000));
       setRemaining(left);
@@ -226,7 +232,7 @@ export function CoinRushGame({
       window.clearInterval(spawnTimer);
       window.clearInterval(tickTimer);
     };
-  }, [phase, cfg, spawnItem, finishGame]);
+  }, [phase, cfg, removeItem, finishGame]);
 
   // auto-clear float text
   useEffect(() => {
@@ -353,19 +359,24 @@ export function CoinRushGame({
           </div>
         </div>
 
+        {/* screen-reader live updates for score and timer */}
+        <p className="sr-only" aria-live="polite">
+          Score {score}, {remaining} seconds remaining
+        </p>
+
         <div
           ref={boardRef}
           className="relative h-[62vh] touch-none select-none overflow-hidden rounded-3xl border border-line bg-gradient-to-b from-bg-2 to-surface"
           onContextMenu={(e) => e.preventDefault()}
         >
-          {/* falling items */}
+          {/* falling items — despawn handled by a JS timer (see gameplay loop),
+              so CSS animation is purely visual and reduced-motion can't break it */}
           {items.map((item) => (
             <button
               key={item.id}
               type="button"
               aria-label={ITEM_META[item.type].label}
               onPointerDown={(e) => tapItem(e, item)}
-              onAnimationEnd={() => removeItem(item.id)}
               className="absolute top-0 -translate-x-1/2 cursor-pointer"
               style={{
                 left: `${item.x}%`,
@@ -374,7 +385,7 @@ export function CoinRushGame({
               }}
             >
               <span
-                className={`grid h-12 w-12 place-items-center text-4xl transition-transform ${
+                className={`grid h-14 w-14 place-items-center text-4xl transition-transform ${
                   item.type === "gold"
                     ? "drop-shadow-[0_0_10px_rgba(245,181,68,0.9)]"
                     : item.type === "bomb"

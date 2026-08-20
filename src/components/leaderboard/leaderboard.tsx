@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { api, ApiClientError } from "@/lib/api";
+import { api, ApiClientError, isUnauthorized, redirectToLogin } from "@/lib/api";
 import type { LeaderboardResponse, LeaderboardPeriod, LeaderboardRow } from "@/lib/account-types";
 import type { MeResponse } from "@/lib/account-types";
 import { Card } from "@/components/ui/card";
@@ -78,8 +78,8 @@ export function Leaderboard() {
       setData(lb);
       setMe(meRes);
     } catch (err) {
-      if (err instanceof ApiClientError && err.status === 401) {
-        window.location.href = "/login";
+      if (isUnauthorized(err)) {
+        redirectToLogin();
         return;
       }
       setError(err instanceof ApiClientError ? err.message : "Could not load the leaderboard.");

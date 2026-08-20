@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, ApiClientError } from "@/lib/api";
+import { api, ApiClientError, isUnauthorized, redirectToLogin } from "@/lib/api";
 import type { GamesResponse, GameCard } from "@/lib/game-types";
 import { ArcCoin } from "@/components/ui/arc";
 import { Card } from "@/components/ui/card";
@@ -84,6 +84,10 @@ export function GamesHub() {
         if (!cancelled) setData(res);
       } catch (err) {
         if (!cancelled) {
+          if (isUnauthorized(err)) {
+            redirectToLogin();
+            return;
+          }
           setError(err instanceof ApiClientError ? err.message : "Could not load games.");
         }
       } finally {

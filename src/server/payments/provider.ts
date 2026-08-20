@@ -1,56 +1,25 @@
-import type { PaymentMethod } from "./packages";
-
 /**
- * Payment-provider abstraction (Checkpoint 6A).
+ * Payment-provider registry.
  *
- * Real providers (Paystack, bank transfer, crypto, …) are NOT implemented
- * here. This registry exists so Checkpoint 6B can register adapters without
- * changing order/ledger code.
- *
- * No SDKs, no credentials, no webhooks, no fake success path.
+ * Adapters: Paystack (card / Nigerian bank transfer), unimplemented hosted
+ * crypto, and a deterministic mock for tests. Order/ledger code stays
+ * provider-agnostic and still credits ARC only via applyCoinChange().
  */
 
-export type PaymentInitiation = {
-  provider: string;
-  providerReference: string | null;
-  checkoutUrl: string | null;
-  status: "PENDING";
-};
+import { mockProvider } from "./mock";
+import { paystackProvider } from "./paystack";
+import { cryptoProvider } from "./crypto";
+import type { PaymentProvider } from "./types";
 
-export type PaymentStatusResult = {
-  provider: string;
-  providerReference: string;
-  status: "PENDING" | "SUCCESS" | "FAILED" | "EXPIRED" | "CANCELLED";
-  amountMinor: number | null;
-  currency: string | null;
-  raw: Record<string, unknown> | null;
-};
-
-export type WebhookVerification = {
-  ok: boolean;
-  providerReference: string | null;
-  orderId: string | null;
-  success: boolean;
-};
-
-export type CreatePaymentInput = {
-  orderId: string;
-  userId: string;
-  amountMinor: number;
-  currency: string;
-  paymentMethod: PaymentMethod;
-  clientReference: string;
-};
-
-export interface PaymentProvider {
-  readonly id: string;
-  createPayment(input: CreatePaymentInput): Promise<PaymentInitiation>;
-  getPaymentStatus(providerReference: string): Promise<PaymentStatusResult>;
-  verifyWebhook(
-    payload: unknown,
-    headers: Record<string, string | null | undefined>
-  ): Promise<WebhookVerification>;
-}
+export type {
+  CreatePaymentInput,
+  PaymentInitiation,
+  PaymentInstructions,
+  PaymentProvider,
+  PaymentStatusResult,
+  ProviderPaymentStatus,
+  WebhookVerification,
+} from "./types";
 
 const registry = new Map<string, PaymentProvider>();
 
@@ -66,36 +35,36 @@ export function listPaymentProviders(): string[] {
   return [...registry.keys()];
 }
 
-/**
- * Placeholder adapter. createPayment records that a provider is not wired;
- * status/webhook calls refuse so nothing can be marked paid through this path.
- */
+registerPaymentProvider(mockProvider);
+registerPaymentProvider(paystackProvider);
+registerPaymentProvider(cryptoProvider);
+
+/** Checkpoint 6A placeholder — kept so existing tests and registry still resolve. */
 export class UnconfiguredPaymentProvider implements PaymentProvider {
   readonly id: string;
   constructor(id = "unconfigured") {
     this.id = id;
   }
-
-  async createPayment(input: CreatePaymentInput): Promise<PaymentInitiation> {
+  async createPayment(input: import("./types").CreatePaymentInput) {
     if (!Number.isInteger(input.amountMinor) || input.amountMinor <= 0) {
       throw new Error("amountMinor must be a positive integer.");
     }
     return {
       provider: this.id,
-      providerReference: null,
-      checkoutUrl: null,
-      status: "PENDING",
+      providerReference: null as string | null,
+      checkoutUrl: null as string | null,
+      status: "PENDING" as const,
+      instructions: { checkoutUrl: null, bankTransfer: null, crypto: null },
     };
   }
-
-  async getPaymentStatus(_providerReference: string): Promise<PaymentStatusResult> {
+  async getPaymentStatus(_providerReference: string): Promise<import("./types").PaymentStatusResult> {
     throw new Error("Payment provider is not configured.");
   }
-
   async verifyWebhook(
     _payload: unknown,
-    _headers: Record<string, string | null | undefined>
-  ): Promise<WebhookVerification> {
+    _headers: Record<string, string | null | undefined>,
+    _rawBody?: string
+  ): Promise<import("./types").WebhookVerification> {
     throw new Error("Payment provider is not configured.");
   }
 }

@@ -52,20 +52,19 @@
   0%, 100% { box-shadow: 0 0 18px -6px rgba(124, 92, 255, 0.55); }
   50% { box-shadow: 0 0 30px -4px rgba(56, 225, 255, 0.5); }
 }
-@keyframes coin-in {
-  0% { transform: scale(0.3) rotate(-12deg); opacity: 0; }
-  25% { transform: scale(1.05) rotate(2deg); opacity: 1; }
-  80% { transform: scale(1) rotate(0deg); opacity: 1; }
-  100% { transform: scale(0.85); opacity: 0; }
-}
-@keyframes tap-burst {
-  0% { transform: scale(1); opacity: 1; }
-  100% { transform: scale(1.9); opacity: 0; }
-}
 @keyframes count-flash {
   0% { transform: scale(1); }
   40% { transform: scale(1.22); color: #f5b544; }
   100% { transform: scale(1); }
+}
+@keyframes coin-fall {
+  from { transform: translateY(-12vh); }
+  to { transform: translateY(96vh); }
+}
+@keyframes score-float {
+  0% { transform: translateY(0); opacity: 0; }
+  15% { opacity: 1; }
+  100% { transform: translateY(-40px); opacity: 0; }
 }
 
 html {
@@ -131,3 +130,48 @@ body {
 
 button { cursor: pointer; }
 button:disabled { cursor: not-allowed; }
+
+/* ---- accessibility: visible, consistent focus states ---- */
+:focus-visible {
+  outline: 2px solid var(--color-brand-2);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--color-brand-2);
+  outline-offset: 2px;
+}
+
+/* Skip-to-content link for keyboard users */
+.skip-link {
+  position: absolute;
+  left: -999px;
+  top: 0;
+  z-index: 200;
+  padding: 0.75rem 1rem;
+  border-radius: 0 0 0.75rem 0;
+  background: var(--color-brand);
+  color: #fff;
+  font-weight: 700;
+}
+.skip-link:focus {
+  left: 0;
+  outline: none;
+}
+
+/* honor reduced-motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

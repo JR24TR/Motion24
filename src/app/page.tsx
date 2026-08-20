@@ -1,11 +1,17 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getSessionUser } from "@/server/auth/session";
 import { publicPlatformStats } from "@/server/services/stats";
 import { listGames } from "@/server/services/games";
 import { getLeaderboard } from "@/server/services/leaderboard";
 
 export const dynamic = "force-dynamic";
 
-export default function LandingPage() {
+export default async function LandingPage() {
+  // Authenticated players land on their dashboard, not the marketing page.
+  const user = await getSessionUser();
+  if (user) redirect("/dashboard");
+
   const stats = publicPlatformStats();
   const games = listGames({ activeOnly: true });
   const top = getLeaderboard("ALL", 5);
@@ -17,9 +23,11 @@ export default function LandingPage() {
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2">
             <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-brand to-brand-2 text-lg font-black text-white shadow-lg shadow-brand/30">
-              A
+              M
             </span>
-            <span className="font-display text-lg font-bold tracking-wide">ARENA</span>
+            <span className="font-display text-lg font-bold tracking-wide">
+              MOTION<span className="arc-text">24</span>
+            </span>
           </div>
           <nav className="flex items-center gap-2">
             <Link
@@ -48,10 +56,10 @@ export default function LandingPage() {
           <h1 className="font-display text-4xl font-black leading-tight sm:text-6xl">
             Play. Earn <span className="arc-text">ARC</span>.
             <br />
-            <span className="gradient-text">Rule the Arena.</span>
+            <span className="gradient-text">Rule the board.</span>
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-balance text-base text-mute sm:text-lg">
-            A private gaming platform for you and your friends. Earn Arena Coins, spend them
+            A private gaming platform for you and your friends. Earn ARC, spend them
             on games, unlock achievements and fight for the top of the leaderboard.
           </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -89,13 +97,13 @@ export default function LandingPage() {
 
       {/* how it works */}
       <section className="mx-auto max-w-6xl px-4 py-12">
-        <h2 className="font-display text-2xl font-bold sm:text-3xl">How the Arena works</h2>
+        <h2 className="font-display text-2xl font-bold sm:text-3xl">How it works</h2>
         <div className="mt-6 grid gap-4 md:grid-cols-3">
           {[
             {
               icon: "🪙",
               title: "Earn ARC",
-              text: "Daily login bonuses, game victories, challenges, achievements and referral rewards all pay out in Arena Coins.",
+              text: "Daily login bonuses, game victories, challenges, achievements and referral rewards all pay out in ARC.",
             },
             {
               icon: "🎮",
@@ -116,7 +124,7 @@ export default function LandingPage() {
           ))}
         </div>
         <p className="mt-4 rounded-xl border border-line bg-surface/60 p-3 text-xs leading-relaxed text-dim">
-          ARC (Arena Coins) is a virtual currency for this platform only. It has no real-world
+          ARC is a virtual currency for this platform only. It has no real-world
           monetary value, cannot be withdrawn and cannot be exchanged for cash.
         </p>
       </section>
@@ -196,7 +204,7 @@ export default function LandingPage() {
       </section>
 
       <footer className="border-t border-line/60 py-8 text-center text-xs text-dim">
-        ARENA · a private gaming community · ARC has no cash value and cannot be withdrawn
+        MOTION24 · a private gaming community · ARC has no cash value and cannot be withdrawn
       </footer>
     </main>
   );

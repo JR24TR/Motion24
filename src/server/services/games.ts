@@ -71,6 +71,58 @@ export function listGames(opts: { activeOnly?: boolean } = {}): GameRow[] {
   ).map(mapGame);
 }
 
+export type RecentSession = {
+  id: string;
+  status: "ACTIVE" | "COMPLETED" | "ABANDONED" | "EXPIRED";
+  score: number | null;
+  isWin: boolean;
+  reward: number;
+  xpEarned: number;
+  startedAt: string;
+  game: { slug: string; name: string; icon: string; difficulty: GameRow["difficulty"] };
+};
+
+/** A player's most recent game sessions (for the dashboard). */
+export function listRecentSessions(userId: string, limit = 6): RecentSession[] {
+  return all<{
+    id: string;
+    status: string;
+    score: number | null;
+    is_win: number;
+    reward: number;
+    xp_earned: number;
+    started_at: string;
+    slug: string;
+    name: string;
+    icon: string;
+    difficulty: string;
+  }>(
+    `SELECT gs.id, gs.status, gs.score, gs.is_win, gs.reward, gs.xp_earned, gs.started_at,
+            g.slug, g.name, g.icon, g.difficulty
+     FROM game_sessions gs
+     JOIN games g ON g.id = gs.game_id
+     WHERE gs.user_id = ?
+     ORDER BY gs.started_at DESC
+     LIMIT ?`,
+    userId,
+    limit
+  ).map((r) => ({
+    id: r.id,
+    status: r.status as RecentSession["status"],
+    score: r.score,
+    isWin: !!r.is_win,
+    reward: r.reward,
+    xpEarned: r.xp_earned,
+    startedAt: r.started_at,
+    game: {
+      slug: r.slug,
+      name: r.name,
+      icon: r.icon,
+      difficulty: r.difficulty as GameRow["difficulty"],
+    },
+  }));
+}
+
 export function getGameBySlug(slug: string): GameRow | undefined {
   return mapGame(
     get<GameRaw>(

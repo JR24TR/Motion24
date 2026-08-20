@@ -67,6 +67,20 @@
   40% { transform: scale(1.22); color: #f5b544; }
   100% { transform: scale(1); }
 }
+@keyframes coin-fall {
+  from { transform: translateY(-12vh); }
+  to { transform: translateY(96vh); }
+}
+@keyframes score-float {
+  0% { transform: translateY(0); opacity: 0; }
+  15% { opacity: 1; }
+  100% { transform: translateY(-40px); opacity: 0; }
+}
+@keyframes bomb-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  75% { transform: translateX(3px); }
+}
 
 html {
   color-scheme: dark;

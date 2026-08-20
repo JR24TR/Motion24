@@ -117,3 +117,11 @@ export const gameCreateSchema = z.object({
 export const gamePatchSchema = gameCreateSchema.partial().extend({
   slug: z.undefined().optional(), // slug is immutable
 });
+
+/** Client may send ONLY these fields. Extra keys (amount, arcAmount, …) are rejected. */
+export const createOrderSchema = z
+  .object({
+    packageId: z.string().trim().min(1, "Package is required.").max(64),
+    paymentMethod: z.enum(["CARD", "BANK_TRANSFER", "CRYPTO"]),
+  })
+  .strict();

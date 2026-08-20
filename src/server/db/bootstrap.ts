@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
+import { migrate } from "./migrate";
 
 /**
  * Idempotent bootstrap: applies schema.sql and seeds baseline data
@@ -11,11 +12,16 @@ import bcrypt from "bcryptjs";
  * Runs synchronously on first DB access.
  */
 export function bootstrap(db: DatabaseSync) {
+  // Upgrade legacy DBs (CHECK constraint rebuild) BEFORE schema.sql indexes
+  // that depend on `order_id` / PURCHASE, then apply schema, then migrate
+  // again so the path is idempotent on both fresh and existing databases.
+  migrate(db);
   const schema = fs.readFileSync(
     path.join(process.cwd(), "src", "server", "db", "schema.sql"),
     "utf8"
   );
   db.exec(schema);
+  migrate(db);
 
   const seeded = db
     .prepare("SELECT value FROM settings WHERE key = 'seed_version'")

@@ -15,7 +15,8 @@ export type TxType =
   | "CHALLENGE"
   | "REFUND"
   | "WELCOME"
-  | "EVENT";
+  | "EVENT"
+  | "PURCHASE";
 
 export type CoinChange = {
   userId: string;
@@ -24,6 +25,8 @@ export type CoinChange = {
   type: TxType;
   description: string;
   gameSessionId?: string;
+  /** purchase orders — unique PURCHASE-per-order index blocks double credit */
+  orderId?: string;
   /** when set, the (userId,type,dayKey) unique index blocks duplicates */
   dayKey?: string;
   meta?: Record<string, unknown>;
@@ -53,6 +56,13 @@ export function applyCoinChange(c: CoinChange): { balance: number; txId: string 
       );
       if (dupe) throw ERRORS.ALREADY_CLAIMED();
     }
+    if (c.orderId && c.type === "PURCHASE") {
+      const credited = get<{ id: string }>(
+        `SELECT id FROM transactions WHERE order_id = ? AND type = 'PURCHASE'`,
+        c.orderId
+      );
+      if (credited) throw ERRORS.BAD_REQUEST("This order has already been credited.");
+    }
     const profile = get<{ balance: number }>(
       `SELECT balance FROM profiles WHERE user_id = ?`,
       c.userId
@@ -80,8 +90,8 @@ export function applyCoinChange(c: CoinChange): { balance: number; txId: string 
     try {
       run(
         `INSERT INTO transactions
-          (id, user_id, amount, type, description, balance_after, game_session_id, day_key, meta, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (id, user_id, amount, type, description, balance_after, game_session_id, order_id, day_key, meta, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         txId,
         c.userId,
         c.amount,
@@ -89,14 +99,29 @@ export function applyCoinChange(c: CoinChange): { balance: number; txId: string 
         c.description,
         newBalance,
         c.gameSessionId ?? null,
+        c.orderId ?? null,
         c.dayKey ?? null,
         c.meta ? JSON.stringify(c.meta) : null,
         nowIso()
       );
     } catch (e) {
-      // defense in depth against replays racing past the pre-check
-      if (e instanceof Error && e.message.includes("idx_tx_daily_dedupe")) {
-        throw ERRORS.ALREADY_CLAIMED();
+      // Unique indexes are the last line of defense. Map collisions from
+      // current row state — never from SQLite's raw error text.
+      if (c.orderId && c.type === "PURCHASE") {
+        const credited = get<{ id: string }>(
+          `SELECT id FROM transactions WHERE order_id = ? AND type = 'PURCHASE'`,
+          c.orderId
+        );
+        if (credited) throw ERRORS.BAD_REQUEST("This order has already been credited.");
+      }
+      if (c.dayKey) {
+        const dupe = get<{ id: string }>(
+          `SELECT id FROM transactions WHERE user_id = ? AND type = ? AND day_key = ?`,
+          c.userId,
+          c.type,
+          c.dayKey
+        );
+        if (dupe) throw ERRORS.ALREADY_CLAIMED();
       }
       throw e;
     }
@@ -162,6 +187,7 @@ export function assertType(value: string): TxType {
   const ok: TxType[] = [
     "EARN", "SPEND", "GAME_ENTRY", "GAME_REWARD", "DAILY_BONUS", "ACHIEVEMENT",
     "REFERRAL", "ADMIN_ADJUSTMENT", "CHALLENGE", "REFUND", "WELCOME", "EVENT",
+    "PURCHASE",
   ];
   return (ok as string[]).includes(value) ? (value as TxType) : "EARN";
 }

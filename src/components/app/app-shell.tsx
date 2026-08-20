@@ -44,9 +44,9 @@ const PRIMARY_NAV = [
  */
 const MORE_NAV: (NavItem & { available: boolean })[] = [
   { href: "/profile", label: "Profile", icon: "👤", available: true },
-  { href: "/achievements", label: "Achievements", icon: "🎯", available: false },
-  { href: "/notifications", label: "Notifications", icon: "🔔", available: false },
-  { href: "/rules", label: "Rules", icon: "📜", available: false },
+  { href: "/achievements", label: "Achievements", icon: "🎯", available: true },
+  { href: "/notifications", label: "Notifications", icon: "🔔", available: true },
+  { href: "/rules", label: "Rules", icon: "📜", available: true },
 ];
 
 function isActive(pathname: string, href: string): boolean {

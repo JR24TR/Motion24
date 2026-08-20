@@ -126,3 +126,84 @@ export interface MeResponse {
   level: ProfileLevel;
   unreadNotifications: number;
 }
+
+// ---- earn ----------------------------------------------------------------
+
+export interface DailyReward {
+  amount: number;
+  xp: number;
+  claimedToday: boolean;
+  lastClaimAt: string | null;
+}
+
+export interface DailyWinChallenge {
+  amount: number;
+  xp: number;
+  claimedToday: boolean;
+  winsToday: number;
+}
+
+export interface EarnResponse {
+  balance: number;
+  referralCode: string;
+  daily: DailyReward;
+  victoryFloor: number;
+  dailyWinChallenge: DailyWinChallenge;
+  referral: { count: number; bonus: number; welcome: number };
+  winRate: { gamesPlayed: number; gamesWon: number; winRate: number };
+}
+
+/** Shape returned by POST /api/rewards/daily/claim. */
+export interface DailyClaimResponse {
+  amount: number;
+  xp: number;
+  balance: number;
+}
+
+// ---- achievements --------------------------------------------------------
+
+export interface AchievementView {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  icon: string;
+  xpReward: number;
+  arcReward: number;
+  sortOrder: number;
+  unlockedAt: string | null;
+  progress: number; // 0..1
+  currentValue: number;
+  target: number;
+}
+
+export interface AchievementsResponse {
+  achievements: AchievementView[];
+}
+
+// ---- notifications -------------------------------------------------------
+
+export type NotificationType =
+  | "DAILY_BONUS"
+  | "GAME_REWARD"
+  | "ACHIEVEMENT"
+  | "LEVEL_UP"
+  | "REFERRAL"
+  | "CHALLENGE"
+  | "ANNOUNCEMENT"
+  | "ADMIN";
+
+export interface NotificationItem {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  readAt: string | null;
+  createdAt: string;
+}
+
+export interface NotificationsResponse {
+  notifications: NotificationItem[];
+  unread: number;
+}
+

@@ -19,6 +19,7 @@ const NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: "🏠" },
   { href: "/games", label: "Games", icon: "🎮" },
   { href: "/earn", label: "Earn", icon: "🪙" },
+  { href: "/wallet", label: "Wallet", icon: "👜" },
   { href: "/leaderboard", label: "Leaderboard", icon: "🏆" },
   { href: "/transactions", label: "Transactions", icon: "💸" },
   { href: "/achievements", label: "Achievements", icon: "🎯" },
@@ -43,6 +44,7 @@ const PRIMARY_NAV = [
  * points at a nonexistent route.
  */
 const MORE_NAV: (NavItem & { available: boolean })[] = [
+  { href: "/wallet", label: "Wallet", icon: "👜", available: true },
   { href: "/profile", label: "Profile", icon: "👤", available: true },
   { href: "/achievements", label: "Achievements", icon: "🎯", available: true },
   { href: "/notifications", label: "Notifications", icon: "🔔", available: true },

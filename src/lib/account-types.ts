@@ -19,7 +19,8 @@ export type TxType =
   | "CHALLENGE"
   | "REFUND"
   | "WELCOME"
-  | "EVENT";
+  | "EVENT"
+  | "PURCHASE";
 
 export interface Transaction {
   id: string;
@@ -160,6 +161,89 @@ export interface DailyClaimResponse {
   balance: number;
 }
 
+// ---- wallet / purchases ---------------------------------------------------
+
+export type WalletPaymentMethod = "CARD" | "BANK_TRANSFER" | "CRYPTO";
+
+export type OrderStatus =
+  | "PENDING"
+  | "PROCESSING"
+  | "SUCCESS"
+  | "FAILED"
+  | "EXPIRED"
+  | "CANCELLED";
+
+export interface WalletPackage {
+  id: string;
+  name: string;
+  description: string;
+  arcAmount: number;
+  bonusArc: number;
+  totalArc: number;
+  amountMinor: number;
+  currency: string;
+  development?: boolean;
+}
+
+export interface BankTransferInstructions {
+  bankName: string;
+  accountNumber: string;
+  accountName: string;
+  amountMinor: number;
+  currency: string;
+  narration: string | null;
+  expiresAt: string | null;
+}
+
+export interface PaymentInstructions {
+  checkoutUrl: string | null;
+  bankTransfer: BankTransferInstructions | null;
+  crypto: unknown | null;
+}
+
+export interface WalletOrder {
+  id: string;
+  packageId: string;
+  status: OrderStatus;
+  paymentMethod: WalletPaymentMethod;
+  provider: string | null;
+  currency: string;
+  amountMinor: number;
+  arcAmount: number;
+  clientReference: string;
+  providerReference: string | null;
+  ledgerTxId: string | null;
+  verifiedAt: string | null;
+  expiresAt: string;
+  createdAt: string;
+  updatedAt: string;
+  checkoutUrl: string | null;
+  paymentInstructions: PaymentInstructions | null;
+}
+
+export interface PackagesResponse {
+  packages: WalletPackage[];
+}
+
+export interface CreateOrderResponse {
+  order: WalletOrder;
+  payment?: {
+    checkoutUrl: string | null;
+    instructions: PaymentInstructions;
+  };
+}
+
+export interface OrderResponse {
+  order: WalletOrder;
+}
+
+export interface OrdersListResponse {
+  rows: WalletOrder[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 // ---- achievements --------------------------------------------------------
 
 export interface AchievementView {
@@ -191,7 +275,8 @@ export type NotificationType =
   | "REFERRAL"
   | "CHALLENGE"
   | "ANNOUNCEMENT"
-  | "ADMIN";
+  | "ADMIN"
+  | "PURCHASE";
 
 export interface NotificationItem {
   id: string;

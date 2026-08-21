@@ -405,7 +405,7 @@ export async function createOrderAndInitiate(
       currency: order.currency,
       paymentMethod: input.paymentMethod,
       clientReference: order.clientReference,
-      callbackUrl: `${publicBaseUrl()}/dashboard`,
+      callbackUrl: `${publicBaseUrl()}/wallet?order=${order.id}`,
     });
     if (!initiated.providerReference) {
       markTerminal(order.id, "FAILED");

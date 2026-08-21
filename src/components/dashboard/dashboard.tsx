@@ -15,6 +15,7 @@ type DashboardData = DashboardResponse;
 const QUICK_ACTIONS = [
   { href: "/games", label: "Play", icon: "🎮", desc: "Enter a game" },
   { href: "/earn", label: "Earn ARC", icon: "🪙", desc: "Daily bonus & challenges" },
+  { href: "/wallet", label: "Buy ARC", icon: "👜", desc: "Card or bank transfer" },
   { href: "/leaderboard", label: "Leaderboard", icon: "🏆", desc: "See the standings" },
   { href: "/profile", label: "Profile", icon: "👤", desc: "Edit your profile" },
 ];

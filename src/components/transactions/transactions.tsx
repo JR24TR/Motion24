@@ -27,6 +27,7 @@ const TX_META: Partial<Record<Transaction["type"], { icon: string; tag: string }
   WELCOME: { icon: "👋", tag: "Welcome" },
   REFUND: { icon: "↩️", tag: "Refund" },
   ADMIN_ADJUSTMENT: { icon: "🛠️", tag: "Adjustment" },
+  PURCHASE: { icon: "👜", tag: "Purchase" },
 };
 
 function formatDate(iso: string): string {

@@ -2,7 +2,12 @@ import { get, run, all, withTx } from "@/server/db/client";
 import { uuid, nowIso } from "@/server/lib/util";
 import { ApiError, ERRORS } from "@/server/lib/errors";
 import { applyCoinChange } from "./coins";
+import { pushNotification } from "./notifications";
 import { getPackage, type PaymentMethod } from "@/server/payments/packages";
+import { resolveProvider, providerForId, publicBaseUrl } from "@/server/payments/resolve";
+import { isMockPaymentsEnabled } from "@/server/payments/mode";
+import { getPaymentProvider } from "@/server/payments/provider";
+import type { PaymentInstructions, ProviderPaymentStatus } from "@/server/payments/types";
 
 export const ORDER_TTL_MS = 30 * 60 * 1000;
 
@@ -30,6 +35,8 @@ export type OrderDTO = {
   expiresAt: string;
   createdAt: string;
   updatedAt: string;
+  checkoutUrl: string | null;
+  paymentInstructions: PaymentInstructions | null;
 };
 
 type OrderRow = {
@@ -52,7 +59,25 @@ type OrderRow = {
   updated_at: string;
 };
 
+function parseMeta(raw: string | null): Record<string, unknown> | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function instructionsFromMeta(raw: string | null): PaymentInstructions | null {
+  const meta = parseMeta(raw);
+  if (!meta) return null;
+  const instructions = meta.instructions as PaymentInstructions | undefined;
+  if (instructions && typeof instructions === "object") return instructions;
+  return null;
+}
+
 function mapOrder(r: OrderRow): OrderDTO {
+  const instructions = instructionsFromMeta(r.provider_meta);
   return {
     id: r.id,
     packageId: r.package_id,
@@ -69,6 +94,8 @@ function mapOrder(r: OrderRow): OrderDTO {
     expiresAt: r.expires_at,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    checkoutUrl: instructions?.checkoutUrl ?? null,
+    paymentInstructions: instructions,
   };
 }
 
@@ -298,7 +325,235 @@ export function finalizeSuccessfulOrder(input: FinalizeInput): OrderDTO {
       throw e;
     }
 
-    return mapOrder(loadOrder(row.id)!);
+    const done = loadOrder(row.id)!;
+    pushNotification(
+      done.user_id,
+      "PURCHASE",
+      `+${arcAmount.toLocaleString()} ARC added`,
+      "Your purchase was confirmed. ARC has been credited to your wallet."
+    );
+    return mapOrder(done);
   });
+}
+
+function markTerminal(orderId: string, status: "FAILED" | "CANCELLED" | "EXPIRED"): OrderDTO {
+  return withTx(() => {
+    const row = loadOrder(orderId);
+    if (!row) throw ERRORS.NOT_FOUND("order");
+    if (row.status === "SUCCESS") return mapOrder(row);
+    if (row.status === status) return mapOrder(row);
+    if (row.status !== "PENDING" && row.status !== "PROCESSING") return mapOrder(row);
+    run(
+      `UPDATE orders SET status = ?, updated_at = ? WHERE id = ? AND status IN ('PENDING','PROCESSING')`,
+      status,
+      nowIso(),
+      orderId
+    );
+    return mapOrder(loadOrder(orderId)!);
+  });
+}
+
+function loadOrderByReference(reference: string): OrderRow | undefined {
+  return get<OrderRow>(
+    `SELECT * FROM orders WHERE provider_reference = ? OR client_reference = ?`,
+    reference,
+    reference
+  );
+}
+
+function attachProvider(
+  orderId: string,
+  patch: {
+    provider: string;
+    providerReference: string;
+    instructions: PaymentInstructions;
+  }
+): OrderDTO {
+  return withTx(() => {
+    const row = loadOrder(orderId);
+    if (!row) throw ERRORS.NOT_FOUND("order");
+    if (patch.providerReference && providerReferenceTaken(patch.providerReference, orderId)) {
+      throw ERRORS.BAD_REQUEST("Duplicate provider reference.");
+    }
+    const prev = parseMeta(row.provider_meta) ?? {};
+    run(
+      `UPDATE orders SET provider = ?, provider_reference = ?, provider_meta = ?, updated_at = ?
+       WHERE id = ?`,
+      patch.provider,
+      patch.providerReference,
+      JSON.stringify({ ...prev, instructions: patch.instructions }),
+      nowIso(),
+      orderId
+    );
+    return mapOrder(loadOrder(orderId)!);
+  });
+}
+
+export async function createOrderAndInitiate(
+  userId: string,
+  input: { packageId: string; paymentMethod: PaymentMethod }
+): Promise<{ order: OrderDTO; payment: { checkoutUrl: string | null; instructions: PaymentInstructions } }> {
+  const order = createOrder(userId, input);
+  const user = get<{ email: string }>(`SELECT email FROM users WHERE id = ?`, userId);
+  const provider = resolveProvider(input.paymentMethod);
+  try {
+    const initiated = await provider.createPayment({
+      orderId: order.id,
+      userId,
+      email: user?.email ?? "player@arena.local",
+      amountMinor: order.amountMinor,
+      currency: order.currency,
+      paymentMethod: input.paymentMethod,
+      clientReference: order.clientReference,
+      callbackUrl: `${publicBaseUrl()}/dashboard`,
+    });
+    if (!initiated.providerReference) {
+      markTerminal(order.id, "FAILED");
+      throw ERRORS.BAD_REQUEST("Payment provider did not return a reference.");
+    }
+    const updated = attachProvider(order.id, {
+      provider: initiated.provider,
+      providerReference: initiated.providerReference,
+      instructions: initiated.instructions,
+    });
+    return {
+      order: updated,
+      payment: { checkoutUrl: initiated.checkoutUrl, instructions: initiated.instructions },
+    };
+  } catch (err) {
+    markTerminal(order.id, "FAILED");
+    throw err;
+  }
+}
+
+function assertMatchesOrder(
+  row: OrderRow,
+  verified: { amountMinor: number | null; currency: string | null; providerReference: string | null }
+) {
+  if (verified.providerReference) {
+    if (row.provider_reference && row.provider_reference !== verified.providerReference) {
+      if (row.client_reference !== verified.providerReference) {
+        throw ERRORS.BAD_REQUEST("Provider reference does not match this order.");
+      }
+    }
+  }
+  if (verified.amountMinor !== null) {
+    if (!Number.isInteger(verified.amountMinor) || verified.amountMinor !== row.amount_minor) {
+      throw ERRORS.BAD_REQUEST("Payment amount does not match the order.");
+    }
+  }
+  if (verified.currency !== null) {
+    if (verified.currency.toUpperCase() !== row.currency.toUpperCase()) {
+      throw ERRORS.BAD_REQUEST("Payment currency does not match the order.");
+    }
+  }
+}
+
+/**
+ * Apply a server-side provider status. Amount/currency/reference are checked
+ * against the stored order. ARC is credited only via finalizeSuccessfulOrder.
+ */
+export function applyVerifiedPayment(input: {
+  orderId?: string | null;
+  providerReference?: string | null;
+  amountMinor: number | null;
+  currency: string | null;
+  status: ProviderPaymentStatus;
+  provider?: string | null;
+}): OrderDTO {
+  const row = input.orderId
+    ? loadOrder(input.orderId)
+    : input.providerReference
+      ? loadOrderByReference(input.providerReference)
+      : undefined;
+  if (!row) throw ERRORS.NOT_FOUND("order");
+
+  if (row.status === "SUCCESS") return mapOrder(row);
+
+  if (input.provider && row.provider && row.provider !== input.provider) {
+    throw ERRORS.BAD_REQUEST("Payment provider does not match this order.");
+  }
+  if (input.provider === "mock" && row.provider !== "mock") {
+    throw ERRORS.BAD_REQUEST("Payment provider does not match this order.");
+  }
+
+  assertMatchesOrder(row, {
+    amountMinor: input.amountMinor,
+    currency: input.currency,
+    providerReference: input.providerReference ?? null,
+  });
+
+  if (input.status === "SUCCESS") {
+    if (input.amountMinor === null || input.currency === null) {
+      throw ERRORS.BAD_REQUEST("Successful payment is missing amount or currency.");
+    }
+    return finalizeSuccessfulOrder({
+      orderId: row.id,
+      providerReference: input.providerReference ?? row.provider_reference,
+      provider: input.provider ?? row.provider,
+    });
+  }
+  if (input.status === "FAILED") return markTerminal(row.id, "FAILED");
+  if (input.status === "CANCELLED") return markTerminal(row.id, "CANCELLED");
+  if (input.status === "EXPIRED") return markTerminal(row.id, "EXPIRED");
+  return mapOrder(row);
+}
+
+export async function checkOrderPayment(userId: string, orderId: string): Promise<OrderDTO> {
+  const order = getOrder(userId, orderId);
+  if (order.status === "SUCCESS" || order.status === "FAILED" || order.status === "CANCELLED") {
+    return order;
+  }
+  persistExpiredIfStale(orderId);
+  const latest = loadOrder(orderId);
+  if (!latest) throw ERRORS.NOT_FOUND("order");
+  if (latest.status === "EXPIRED") {
+    throw ERRORS.BAD_REQUEST("This order has expired.");
+  }
+  if (!latest.provider_reference || !latest.provider) {
+    throw ERRORS.BAD_REQUEST("This order has no payment in progress.");
+  }
+  const provider = providerForId(latest.provider);
+  const result = await provider.getPaymentStatus(latest.provider_reference);
+  return applyVerifiedPayment({
+    orderId: latest.id,
+    providerReference: result.providerReference,
+    amountMinor: result.amountMinor,
+    currency: result.currency,
+    status: result.status,
+    provider: result.provider,
+  });
+}
+
+export async function ingestWebhook(
+  providerId: string,
+  payload: unknown,
+  headers: Record<string, string | null | undefined>,
+  rawBody: string
+): Promise<{ ok: boolean; order?: OrderDTO }> {
+  if (providerId === "mock" && !isMockPaymentsEnabled()) {
+    throw new ApiError(404, "NOT_FOUND", "Not found.");
+  }
+  const provider = getPaymentProvider(providerId);
+  if (!provider) throw ERRORS.BAD_REQUEST("Unknown payment provider.");
+  const verified = await provider.verifyWebhook(payload, headers, rawBody);
+  if (!verified.ok) {
+    throw new ApiError(401, "INVALID_SIGNATURE", "Invalid webhook signature.");
+  }
+  if (!verified.providerReference && !verified.orderId) {
+    throw ERRORS.BAD_REQUEST("Webhook is missing a payment reference.");
+  }
+  if (verified.status === "PENDING" || verified.status === null) {
+    return { ok: true };
+  }
+  const order = applyVerifiedPayment({
+    orderId: verified.orderId,
+    providerReference: verified.providerReference,
+    amountMinor: verified.amountMinor,
+    currency: verified.currency,
+    status: verified.status,
+    provider: providerId,
+  });
+  return { ok: true, order };
 }
 

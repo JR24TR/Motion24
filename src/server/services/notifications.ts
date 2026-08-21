@@ -9,7 +9,8 @@ export type NotificationType =
   | "REFERRAL"
   | "CHALLENGE"
   | "ANNOUNCEMENT"
-  | "ADMIN";
+  | "ADMIN"
+  | "PURCHASE";
 
 /** Insert a notification. Safe to call inside an ongoing transaction. */
 export function pushNotification(

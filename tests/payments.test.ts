@@ -19,6 +19,8 @@ import {
 import { verifyPaystackSignature } from "@/server/payments/paystack";
 import { hmacHex } from "@/server/payments/hmac";
 import { ApiError } from "@/server/lib/errors";
+import { providerForId } from "@/server/payments/resolve";
+import { isMockPaymentsEnabled } from "@/server/payments/mode";
 
 function freshUser(name: string) {
   const n = `${name}_${Math.random().toString(36).slice(2, 8)}`;
@@ -294,6 +296,108 @@ describe("paystack signature helper export", () => {
     } finally {
       if (prev === undefined) delete process.env.PAYSTACK_SECRET_KEY;
       else process.env.PAYSTACK_SECRET_KEY = prev;
+    }
+  });
+});
+
+describe("provider isolation", () => {
+  it("unknown provider IDs are rejected and never fall back to mock", () => {
+    expect(() => providerForId("not-a-real-provider")).toThrowError(/unknown payment provider/i);
+    expect(isMockPaymentsEnabled()).toBe(true);
+  });
+
+  it("mock webhook cannot finalize a Paystack order", async () => {
+    const id = freshUser("iso_ps");
+    const start = getBalance(id);
+    const order = createOrder(id, { packageId: "dev-starter", paymentMethod: "CARD" });
+    run(
+      `UPDATE orders SET provider = 'paystack', provider_reference = ? WHERE id = ?`,
+      order.clientReference,
+      order.id
+    );
+    const payload = {
+      reference: order.clientReference,
+      orderId: order.id,
+      status: "SUCCESS",
+      amountMinor: order.amountMinor,
+      currency: "NGN",
+    };
+    const raw = JSON.stringify(payload);
+    const sig = signMockWebhook(raw);
+    await expect(ingestWebhook("mock", payload, { "x-mock-signature": sig }, raw)).rejects.toThrow(
+      /provider/i
+    );
+    expect(getBalance(id)).toBe(start);
+    expect(get<{ status: string }>(`SELECT status FROM orders WHERE id = ?`, order.id)!.status).toBe(
+      "PENDING"
+    );
+  });
+
+  it("unsupported Paystack events cannot credit ARC even with status=success", async () => {
+    const prev = process.env.PAYSTACK_SECRET_KEY;
+    process.env.PAYSTACK_SECRET_KEY = "sk_test_evt";
+    try {
+      const id = freshUser("iso_evt");
+      const start = getBalance(id);
+      const order = createOrder(id, { packageId: "dev-starter", paymentMethod: "CARD" });
+      run(
+        `UPDATE orders SET provider = 'paystack', provider_reference = ? WHERE id = ?`,
+        order.clientReference,
+        order.id
+      );
+      const payload = {
+        event: "transfer.success",
+        data: {
+          reference: order.clientReference,
+          amount: order.amountMinor,
+          currency: "NGN",
+          status: "success",
+          metadata: { order_id: order.id },
+        },
+      };
+      const raw = JSON.stringify(payload);
+      const sig = hmacHex("sha512", "sk_test_evt", raw);
+      const res = await ingestWebhook("paystack", payload, { "x-paystack-signature": sig }, raw);
+      expect(res.order?.status ?? "PENDING").not.toBe("SUCCESS");
+      expect(getBalance(id)).toBe(start);
+    } finally {
+      process.env.PAYSTACK_SECRET_KEY = prev;
+    }
+  });
+
+  it("valid Paystack charge.success credits exactly once and replay is idempotent", async () => {
+    const prev = process.env.PAYSTACK_SECRET_KEY;
+    process.env.PAYSTACK_SECRET_KEY = "sk_test_ok";
+    try {
+      const id = freshUser("iso_ok");
+      const start = getBalance(id);
+      const pkg = getPackage("dev-starter")!;
+      const order = createOrder(id, { packageId: "dev-starter", paymentMethod: "CARD" });
+      run(
+        `UPDATE orders SET provider = 'paystack', provider_reference = ? WHERE id = ?`,
+        order.clientReference,
+        order.id
+      );
+      const payload = {
+        event: "charge.success",
+        data: {
+          reference: order.clientReference,
+          amount: order.amountMinor,
+          currency: "NGN",
+          status: "success",
+          metadata: { order_id: order.id },
+        },
+      };
+      const raw = JSON.stringify(payload);
+      const sig = hmacHex("sha512", "sk_test_ok", raw);
+      await ingestWebhook("paystack", payload, { "x-paystack-signature": sig }, raw);
+      await ingestWebhook("paystack", payload, { "x-paystack-signature": sig }, raw);
+      expect(getBalance(id)).toBe(start + pkg.totalArc);
+      expect(
+        all(`SELECT id FROM transactions WHERE order_id = ? AND type = 'PURCHASE'`, order.id)
+      ).toHaveLength(1);
+    } finally {
+      process.env.PAYSTACK_SECRET_KEY = prev;
     }
   });
 });

@@ -187,17 +187,32 @@ export class PaystackPaymentProvider implements PaymentProvider {
       };
     };
     const data = body.data ?? {};
-    const status = mapPaystackStatus(data.status ?? (body.event === "charge.success" ? "success" : undefined));
     const amountMinor = typeof data.amount === "number" && Number.isInteger(data.amount) ? data.amount : null;
     const currency = typeof data.currency === "string" ? data.currency : null;
     const reference = typeof data.reference === "string" ? data.reference : null;
     const orderId = typeof data.metadata?.order_id === "string" ? data.metadata.order_id : null;
+    const event = typeof body.event === "string" ? body.event : "";
+
+    // Only charge.success may finalize. data.status === "success" alone is not enough.
+    let status: ProviderPaymentStatus = "PENDING";
+    let success = false;
+    if (event === "charge.success") {
+      const inner = (data.status ?? "success").toLowerCase();
+      if (inner === "success") {
+        status = "SUCCESS";
+        success = true;
+      } else {
+        status = mapPaystackStatus(data.status);
+      }
+    } else if (event === "charge.failed") {
+      status = "FAILED";
+    }
 
     return {
       ok: true,
       providerReference: reference,
       orderId,
-      success: body.event === "charge.success" || status === "SUCCESS",
+      success,
       status,
       amountMinor,
       currency,

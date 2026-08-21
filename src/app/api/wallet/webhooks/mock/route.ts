@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ApiError } from "@/server/lib/errors";
+import { isMockPaymentsEnabled } from "@/server/payments/mode";
 import { ingestWebhook } from "@/server/services/orders";
 
 /**
- * Test-adapter webhook. Only useful when the mock provider issued the order.
- * Signatures are still required (x-mock-signature). This is not a production
- * bypass and never finalizes without HMAC verification + amount/currency checks.
+ * Test-adapter webhook. Completely unavailable when NODE_ENV=production.
+ * Even in test/dev it can only finalize orders whose stored provider is "mock".
  */
 export async function POST(req: NextRequest) {
+  if (!isMockPaymentsEnabled()) {
+    return NextResponse.json({ error: { code: "NOT_FOUND", message: "Not found." } }, { status: 404 });
+  }
+
   const rawBody = await req.text();
   let payload: unknown = {};
   try {

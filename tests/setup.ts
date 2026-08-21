@@ -12,3 +12,5 @@ process.env.ARENA_DB_PATH = path.join(
 process.env.ADMIN_PASSWORD = "TestAdminPW-7f3k2x";
 // reset-link dev feature must be OFF by default in tests
 delete process.env.ARENA_DEV_RESET_LINKS;
+// mock webhook HMAC — test env only, never a production default
+process.env.MOCK_WEBHOOK_SECRET = "vitest-mock-webhook-secret";

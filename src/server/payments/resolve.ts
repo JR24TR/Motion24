@@ -2,16 +2,12 @@ import { ERRORS } from "@/server/lib/errors";
 import type { PaymentMethod } from "./packages";
 import { getPaymentProvider } from "./provider";
 import type { PaymentProvider } from "./types";
+import { isMockPaymentsEnabled } from "./mode";
 
-function useMockProvider(): boolean {
-  const forced = (process.env.ARENA_PAYMENT_PROVIDER ?? "").trim().toLowerCase();
-  if (forced === "mock") return true;
-  if (forced === "paystack" || forced === "crypto") return false;
-  return Boolean(process.env.VITEST) || process.env.NODE_ENV === "test";
-}
+export { isMockPaymentsEnabled };
 
 export function resolveProvider(method: PaymentMethod): PaymentProvider {
-  if (useMockProvider()) {
+  if (isMockPaymentsEnabled()) {
     const mock = getPaymentProvider("mock");
     if (!mock) throw ERRORS.BAD_REQUEST("Mock payment provider is not registered.");
     return mock;
@@ -27,12 +23,11 @@ export function resolveProvider(method: PaymentMethod): PaymentProvider {
 }
 
 export function providerForId(id: string): PaymentProvider {
-  if (useMockProvider()) {
-    const mock = getPaymentProvider("mock");
-    if (mock) return mock;
+  if (id === "mock" && !isMockPaymentsEnabled()) {
+    throw ERRORS.BAD_REQUEST("Unknown payment provider.");
   }
-  const p = getPaymentProvider(id) ?? getPaymentProvider("mock");
-  if (!p) throw ERRORS.BAD_REQUEST("Payment provider is not configured.");
+  const p = getPaymentProvider(id);
+  if (!p) throw ERRORS.BAD_REQUEST("Unknown payment provider.");
   return p;
 }
 

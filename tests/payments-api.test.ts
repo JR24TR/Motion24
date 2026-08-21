@@ -27,6 +27,7 @@ import { POST as checkOrder } from "@/app/api/wallet/orders/[id]/check/route";
 import { POST as mockWebhook } from "@/app/api/wallet/webhooks/mock/route";
 import { POST as paystackWebhook } from "@/app/api/wallet/webhooks/paystack/route";
 import { POST as cryptoWebhook } from "@/app/api/wallet/webhooks/crypto/route";
+import { isMockPaymentsEnabled } from "@/server/payments/mode";
 
 function jsonRequest(url: string, payload?: unknown, method = "POST", extra: Record<string, string> = {}) {
   return new NextRequest(`http://local.test${url}`, {
@@ -160,7 +161,7 @@ describe("wallet payment HTTP APIs", () => {
     expect(res.status).toBe(401);
   });
 
-  it("Paystack webhook valid signature + matching order credits once", async () => {
+  it("Paystack webhook valid signature + matching paystack order credits once", async () => {
     const prev = process.env.PAYSTACK_SECRET_KEY;
     process.env.PAYSTACK_SECRET_KEY = "sk_test_http_only";
     try {
@@ -171,6 +172,7 @@ describe("wallet payment HTTP APIs", () => {
         jsonRequest("/api/wallet/orders", { packageId: "dev-starter", paymentMethod: "CARD" })
       );
       const { order } = await created.json();
+      run(`UPDATE orders SET provider = 'paystack' WHERE id = ?`, order.id);
       const payload = {
         event: "charge.success",
         data: {
@@ -195,6 +197,56 @@ describe("wallet payment HTTP APIs", () => {
     } finally {
       process.env.PAYSTACK_SECRET_KEY = prev;
     }
+  });
+
+  it("production cannot use the mock webhook", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      expect(isMockPaymentsEnabled()).toBe(false);
+      const req = new NextRequest("http://local.test/api/wallet/webhooks/mock", {
+        method: "POST",
+        body: JSON.stringify({
+          reference: "mock_x",
+          status: "SUCCESS",
+          amountMinor: 10000,
+          currency: "NGN",
+        }),
+        headers: { "content-type": "application/json", "x-mock-signature": "00" },
+      });
+      const res = await mockWebhook(req);
+      expect(res.status).toBe(404);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("mock webhook cannot finalize a Paystack-tagged order over HTTP", async () => {
+    const id = freshUser("http_iso");
+    loginAs(id);
+    const start = getBalance(id);
+    const created = await postOrder(
+      jsonRequest("/api/wallet/orders", { packageId: "dev-starter", paymentMethod: "CARD" })
+    );
+    const { order } = await created.json();
+    run(`UPDATE orders SET provider = 'paystack' WHERE id = ?`, order.id);
+    const payload = {
+      reference: order.providerReference,
+      orderId: order.id,
+      status: "SUCCESS",
+      amountMinor: order.amountMinor,
+      currency: "NGN",
+    };
+    const raw = JSON.stringify(payload);
+    const sig = signMockWebhook(raw);
+    const res = await mockWebhook(
+      new NextRequest("http://local.test/api/wallet/webhooks/mock", {
+        method: "POST",
+        body: raw,
+        headers: { "content-type": "application/json", "x-mock-signature": sig },
+      })
+    );
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(getBalance(id)).toBe(start);
   });
 
   it("crypto webhook is rejected while the adapter is unimplemented", async () => {

@@ -1,4 +1,5 @@
 import { hmacHex, timingSafeEqualString } from "./hmac";
+import { isMockPaymentsEnabled } from "./mode";
 import type {
   CreatePaymentInput,
   PaymentInitiation,
@@ -19,7 +20,12 @@ type MockPayment = {
 
 const store = new Map<string, MockPayment>();
 
-export const MOCK_WEBHOOK_SECRET = "test-webhook-secret";
+/** Test-only. Never a production default. */
+export function mockWebhookSecret(): string | null {
+  if (!isMockPaymentsEnabled()) return null;
+  const s = (process.env.MOCK_WEBHOOK_SECRET ?? "").trim();
+  return s.length > 0 ? s : null;
+}
 
 export function resetMockPayments(): void {
   store.clear();
@@ -39,8 +45,10 @@ export function setMockPaymentStatus(
   store.set(reference, { ...row, status, ...patch });
 }
 
-export function signMockWebhook(rawBody: string, secret = MOCK_WEBHOOK_SECRET): string {
-  return hmacHex("sha256", secret, rawBody);
+export function signMockWebhook(rawBody: string, secret?: string): string {
+  const key = secret ?? mockWebhookSecret();
+  if (!key) throw new Error("MOCK_WEBHOOK_SECRET is not configured.");
+  return hmacHex("sha256", key, rawBody);
 }
 
 /**
@@ -51,6 +59,9 @@ export class MockPaymentProvider implements PaymentProvider {
   readonly id = "mock";
 
   async createPayment(input: CreatePaymentInput): Promise<PaymentInitiation> {
+    if (!isMockPaymentsEnabled()) {
+      throw new Error("Mock payment provider is not available.");
+    }
     if (!Number.isInteger(input.amountMinor) || input.amountMinor <= 0) {
       throw new Error("amountMinor must be a positive integer.");
     }
@@ -101,6 +112,16 @@ export class MockPaymentProvider implements PaymentProvider {
   }
 
   async getPaymentStatus(providerReference: string): Promise<PaymentStatusResult> {
+    if (!isMockPaymentsEnabled()) {
+      return {
+        provider: this.id,
+        providerReference,
+        status: "FAILED",
+        amountMinor: null,
+        currency: null,
+        raw: { error: "mock_disabled" },
+      };
+    }
     const row = store.get(providerReference);
     if (!row) {
       return {
@@ -127,20 +148,24 @@ export class MockPaymentProvider implements PaymentProvider {
     headers: Record<string, string | null | undefined>,
     rawBody: string
   ): Promise<WebhookVerification> {
+    const reject = (reason: string): WebhookVerification => ({
+      ok: false,
+      reason,
+      providerReference: null,
+      orderId: null,
+      success: false,
+      status: null,
+      amountMinor: null,
+      currency: null,
+    });
+
+    if (!isMockPaymentsEnabled()) return reject("mock_disabled");
+    const secret = mockWebhookSecret();
+    if (!secret) return reject("mock_secret_unconfigured");
+
     const sig = headers["x-mock-signature"] ?? headers["X-Mock-Signature"] ?? null;
-    const expected = signMockWebhook(rawBody);
-    if (!sig || !timingSafeEqualString(sig, expected)) {
-      return {
-        ok: false,
-        reason: "invalid_signature",
-        providerReference: null,
-        orderId: null,
-        success: false,
-        status: null,
-        amountMinor: null,
-        currency: null,
-      };
-    }
+    const expected = hmacHex("sha256", secret, rawBody);
+    if (!sig || !timingSafeEqualString(sig, expected)) return reject("invalid_signature");
 
     const body = (payload ?? {}) as {
       reference?: string;

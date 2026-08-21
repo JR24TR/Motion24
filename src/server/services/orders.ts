@@ -5,6 +5,7 @@ import { applyCoinChange } from "./coins";
 import { pushNotification } from "./notifications";
 import { getPackage, type PaymentMethod } from "@/server/payments/packages";
 import { resolveProvider, providerForId, publicBaseUrl } from "@/server/payments/resolve";
+import { isMockPaymentsEnabled } from "@/server/payments/mode";
 import { getPaymentProvider } from "@/server/payments/provider";
 import type { PaymentInstructions, ProviderPaymentStatus } from "@/server/payments/types";
 
@@ -469,6 +470,13 @@ export function applyVerifiedPayment(input: {
 
   if (row.status === "SUCCESS") return mapOrder(row);
 
+  if (input.provider && row.provider && row.provider !== input.provider) {
+    throw ERRORS.BAD_REQUEST("Payment provider does not match this order.");
+  }
+  if (input.provider === "mock" && row.provider !== "mock") {
+    throw ERRORS.BAD_REQUEST("Payment provider does not match this order.");
+  }
+
   assertMatchesOrder(row, {
     amountMinor: input.amountMinor,
     currency: input.currency,
@@ -523,6 +531,9 @@ export async function ingestWebhook(
   headers: Record<string, string | null | undefined>,
   rawBody: string
 ): Promise<{ ok: boolean; order?: OrderDTO }> {
+  if (providerId === "mock" && !isMockPaymentsEnabled()) {
+    throw new ApiError(404, "NOT_FOUND", "Not found.");
+  }
   const provider = getPaymentProvider(providerId);
   if (!provider) throw ERRORS.BAD_REQUEST("Unknown payment provider.");
   const verified = await provider.verifyWebhook(payload, headers, rawBody);

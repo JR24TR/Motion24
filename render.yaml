@@ -1,0 +1,15 @@
+# Temporary staging blueprint. No payment credentials.
+# SQLite stays on the instance disk (ephemeral on the free plan).
+services:
+  - type: web
+    name: motion24-staging
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
